@@ -1,0 +1,102 @@
+---
+- name: Create config directory
+  ansible.builtin.file:
+    path: "{{ mtproto_config_path }}"
+    state: directory
+    mode: "0700"
+
+- name: Check if secret file exists
+  ansible.builtin.stat:
+    path: "{{ mtproto_config_path }}/secret"
+  register: secret_file
+
+- name: Read existing secret
+  ansible.builtin.slurp:
+    src: "{{ mtproto_config_path }}/secret"
+  register: existing_secret
+  when:
+    - secret_file.stat.exists
+    - mtproto_secret | length == 0
+
+- name: Set secret from file
+  ansible.builtin.set_fact:
+    _mtproto_secret: "{{ existing_secret.content | b64decode | trim }}"
+  when:
+    - secret_file.stat.exists
+    - mtproto_secret | length == 0
+
+- name: Generate new Fake TLS secret
+  ansible.builtin.shell: |
+    set -e
+    DOMAIN_HEX=$(echo -n "{{ mtproto_fake_tls_domain }}" | xxd -ps | tr -d '\n')
+    DOMAIN_LEN=${#DOMAIN_HEX}
+    NEEDED=$((30 - DOMAIN_LEN))
+    RANDOM_HEX=$(openssl rand -hex 15 | cut -c1-$NEEDED)
+    echo "ee${DOMAIN_HEX}${RANDOM_HEX}"
+  register: generated_secret
+  changed_when: false
+  when:
+    - not secret_file.stat.exists
+    - mtproto_secret | length == 0
+
+- name: Set generated secret fact
+  ansible.builtin.set_fact:
+    _mtproto_secret: "{{ generated_secret.stdout | trim }}"
+  when:
+    - not secret_file.stat.exists
+    - mtproto_secret | length == 0
+
+- name: Use explicitly provided secret
+  ansible.builtin.set_fact:
+    _mtproto_secret: "{{ mtproto_secret }}"
+  when: mtproto_secret | length > 0
+
+- name: Save secret to file
+  ansible.builtin.copy:
+    content: "{{ _mtproto_secret }}"
+    dest: "{{ mtproto_config_path }}/secret"
+    mode: "0600"
+  notify: Restart mtproto-proxy container
+
+- name: Pull MTProto proxy image
+  community.docker.docker_image:
+    name: "{{ mtproto_image }}"
+    source: pull
+
+- name: Start MTProto proxy container
+  community.docker.docker_container:
+    name: "{{ mtproto_container_name }}"
+    image: "{{ mtproto_image }}"
+    state: started
+    restart_policy: "{{ mtproto_restart_policy }}"
+    ports:
+      - "{{ mtproto_port }}:443"
+    env:
+      SECRET: "{{ _mtproto_secret }}"
+
+- name: Get server public IP
+  ansible.builtin.uri:
+    url: https://ifconfig.me
+    return_content: true
+  register: public_ip
+  changed_when: false
+
+- name: Save config file
+  ansible.builtin.template:
+    src: mtproto_config.txt.j2
+    dest: "{{ mtproto_config_path }}/mtproto_config.txt"
+    mode: "0644"
+
+- name: Display connection info
+  ansible.builtin.debug:
+    msg: |
+      ====================================
+      MTProto Proxy deployed successfully!
+      ====================================
+      Server: {{ public_ip.content | trim }}
+      Port:   {{ mtproto_port }}
+      Secret: {{ _mtproto_secret }}
+      Domain: {{ mtproto_fake_tls_domain }}
+      ====================================
+      Link: tg://proxy?server={{ public_ip.content | trim }}&port={{ mtproto_port }}&secret={{ _mtproto_secret }}
+      ====================================
