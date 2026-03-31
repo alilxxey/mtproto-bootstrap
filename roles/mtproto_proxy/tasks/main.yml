@@ -1,0 +1,7 @@
+---
+- name: Install Docker
+  ansible.builtin.include_tasks: docker.yml
+  when: mtproto_install_docker
+
+- name: Deploy MTProto proxy
+  ansible.builtin.include_tasks: proxy.yml
