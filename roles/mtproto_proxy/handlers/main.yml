@@ -1,0 +1,5 @@
+---
+- name: Restart mtproto-proxy container
+  community.docker.docker_container:
+    name: "{{ mtproto_container_name }}"
+    restart: true

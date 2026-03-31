@@ -1,0 +1,16 @@
+---
+# Container
+mtproto_container_name: "mtproto-proxy"
+mtproto_image: "telegrammessenger/proxy:latest"
+mtproto_port: 443
+mtproto_restart_policy: "unless-stopped"
+
+# Fake TLS
+mtproto_fake_tls_domain: "ya.ru"
+mtproto_secret: ""
+
+# Docker
+mtproto_install_docker: true
+
+# Config on host
+mtproto_config_path: "/etc/mtproto-proxy"
