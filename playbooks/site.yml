@@ -1,0 +1,6 @@
+---
+- name: Deploy MTProto Proxy
+  hosts: mtproto
+  become: true
+  roles:
+    - mtproto_proxy
