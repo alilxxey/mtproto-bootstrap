@@ -47,7 +47,7 @@
 
 - name: Build Fake TLS link secret
   ansible.builtin.shell: |
-    DOMAIN_HEX=$(echo -n "{{ mtproto_fake_tls_domain }}" | xxd -ps | tr -d '\n')
+    DOMAIN_HEX=$(python3 -c "print('{{ mtproto_fake_tls_domain }}'.encode().hex())")
     echo "ee{{ _mtproto_secret }}${DOMAIN_HEX}"
   register: link_secret_result
   changed_when: false

@@ -28,3 +28,8 @@
     name: docker
     state: started
     enabled: true
+
+- name: Install Docker SDK for Python
+  ansible.builtin.package:
+    name: python3-docker
+    state: present
