@@ -1,5 +1,5 @@
 SERVER={{ public_ip.content | trim }}
 PORT={{ mtproto_port }}
-SECRET={{ _mtproto_secret }}
+SECRET={{ _mtproto_link_secret }}
 DOMAIN={{ mtproto_fake_tls_domain }}
-LINK=tg://proxy?server={{ public_ip.content | trim }}&port={{ mtproto_port }}&secret={{ _mtproto_secret }}
+LINK=tg://proxy?server={{ public_ip.content | trim }}&port={{ mtproto_port }}&secret={{ _mtproto_link_secret }}

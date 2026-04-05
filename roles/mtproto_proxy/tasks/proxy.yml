@@ -25,14 +25,8 @@
     - secret_file.stat.exists
     - mtproto_secret | length == 0
 
-- name: Generate new Fake TLS secret
-  ansible.builtin.shell: |
-    set -e
-    DOMAIN_HEX=$(echo -n "{{ mtproto_fake_tls_domain }}" | xxd -ps | tr -d '\n')
-    DOMAIN_LEN=${#DOMAIN_HEX}
-    NEEDED=$((30 - DOMAIN_LEN))
-    RANDOM_HEX=$(openssl rand -hex 15 | cut -c1-$NEEDED)
-    echo "ee${DOMAIN_HEX}${RANDOM_HEX}"
+- name: Generate new secret
+  ansible.builtin.command: openssl rand -hex 16
   register: generated_secret
   changed_when: false
   when:
@@ -51,11 +45,31 @@
     _mtproto_secret: "{{ mtproto_secret }}"
   when: mtproto_secret | length > 0
 
+- name: Build Fake TLS link secret
+  ansible.builtin.shell: |
+    DOMAIN_HEX=$(echo -n "{{ mtproto_fake_tls_domain }}" | xxd -ps | tr -d '\n')
+    echo "ee{{ _mtproto_secret }}${DOMAIN_HEX}"
+  register: link_secret_result
+  changed_when: false
+
+- name: Set link secret fact
+  ansible.builtin.set_fact:
+    _mtproto_link_secret: "{{ link_secret_result.stdout | trim }}"
+
 - name: Save secret to file
   ansible.builtin.copy:
     content: "{{ _mtproto_secret }}"
     dest: "{{ mtproto_config_path }}/secret"
     mode: "0600"
+  notify: Restart mtproto-proxy container
+
+- name: Deploy custom run.sh with FakeTLS support
+  ansible.builtin.template:
+    src: run.sh.j2
+    dest: "{{ mtproto_config_path }}/run.sh"
+    owner: root
+    group: root
+    mode: "0755"
   notify: Restart mtproto-proxy container
 
 - name: Pull MTProto proxy image
@@ -71,12 +85,15 @@
     restart_policy: "{{ mtproto_restart_policy }}"
     ports:
       - "{{ mtproto_port }}:443"
+    volumes:
+      - "{{ mtproto_config_path }}/run.sh:/run.sh:ro"
     env:
       SECRET: "{{ _mtproto_secret }}"
+      DOMAIN: "{{ mtproto_fake_tls_domain }}"
 
 - name: Get server public IP
   ansible.builtin.uri:
-    url: https://ifconfig.me
+    url: https://api.ipify.org
     return_content: true
   register: public_ip
   changed_when: false
@@ -95,8 +112,8 @@
       ====================================
       Server: {{ public_ip.content | trim }}
       Port:   {{ mtproto_port }}
-      Secret: {{ _mtproto_secret }}
+      Secret: {{ _mtproto_link_secret }}
       Domain: {{ mtproto_fake_tls_domain }}
       ====================================
-      Link: tg://proxy?server={{ public_ip.content | trim }}&port={{ mtproto_port }}&secret={{ _mtproto_secret }}
+      Link: tg://proxy?server={{ public_ip.content | trim }}&port={{ mtproto_port }}&secret={{ _mtproto_link_secret }}
       ====================================
